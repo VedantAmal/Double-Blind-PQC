@@ -123,3 +123,6 @@ pip install oqs  # requires liboqs C library
 
 1. Shim, H., et al. "qTrustNet VPN: Enhancing Security in the Quantum Era." *IEEE Access*, vol. 13, Jan. 2025.
 2. NIST FIPS 203: Module-Lattice-Based Key-Encapsulation Mechanism Standard, Aug. 2024.
+=======
+# Double-Blind-PQC-Ecosystem
+>>>>>>> 8a721d49b3df003614d77bc5f838583b4fe49305
