@@ -1,0 +1,31 @@
+{
+    "network": {
+        "layer1_port": 51821,
+        "layer2_port": 51822,
+        "mtu": 1500,
+        "tunnel_overhead": 80,
+        "fragment_threshold": 1000,
+        "fragment_timeout_sec": 5.0,
+        "ack_timeout_sec": 2.0,
+        "max_retries": 3
+    },
+    "crypto": {
+        "kem_algorithm": "Kyber768",
+        "sig_algorithm": "Dilithium3",
+        "symmetric_cipher": "AES-256-GCM",
+        "kdf_algorithm": "HKDF-SHA256",
+        "rekey_interval_sec": 3600
+    },
+    "wireguard": {
+        "interface": "wg0",
+        "listen_port": 51820,
+        "peer_endpoint": "127.0.0.1",
+        "allowed_ips": "10.0.0.0/24",
+        "tunnel_address_server": "10.0.0.1/24",
+        "tunnel_address_client": "10.0.0.2/24"
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "logs/double_blind.log"
+    }
+}
