@@ -1,3 +1,4 @@
+
 # Double-Blind Post-Quantum Communication Ecosystem
 
 > Implementation of Sections 5 & 6 from the CNS Project Report  
@@ -126,3 +127,21 @@ pip install oqs  # requires liboqs C library
 =======
 # Double-Blind-PQC-Ecosystem
 >>>>>>> 8a721d49b3df003614d77bc5f838583b4fe49305
+=======
+
+>>>>>>> 61787f342db8082989f7bee9760998b927673fc2
+
+
+
+```markdown
+Layer 1 (VPN) handshake:   ~4ms   ← qTrustNet: 3-5ms ✓
+Layer 2 (E2E) handshake:   ~52ms  ← <100ms target ✓
+Total messages delivered:  5/5    ← 0% packet loss ✓
+Fragments for Kyber PK:    2      ← fits in 1000B chunks ✓
+MTU tested:                1280B  ← IPv6 worst case ✓
+
+```
+
+create a python system qTrustNet-style Sidecar using liboqs-python to
+inject PQC keys into WireGuard on macOS/Linux also display on the screen and Develop the Messenger Client with the FragmentationWrapper
+class.
