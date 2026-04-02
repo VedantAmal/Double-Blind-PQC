@@ -181,7 +181,11 @@ body{font-family:'SF Mono','Fira Code','Cascadia Code',monospace;background:var(
     <h1>🛡️ Double-Blind Post-Quantum Communication</h1>
     <div class="header-sub">Kyber-768 · Dilithium-3 · AES-256-GCM · Fragmentation Wrapper</div>
   </div>
-  <div id="badge" class="badge off"><div class="dot"></div><span id="badgeTxt">Disconnected</span></div>
+  <div style="display:flex; gap:20px; align-items:center;">
+    <a href="/" style="color:var(--cyan); text-decoration:none; font-size:11px; font-weight:700; background:rgba(6,182,212,0.1); padding:6px 12px; border-radius:6px; border:1px solid var(--cyan);">VPN Dashboard</a>
+    <a href="/benchmarks" style="color:var(--t2); text-decoration:none; font-size:11px; font-weight:700; padding:6px 12px; transition:0.2s;" onmouseover="this.style.color='var(--cyan)'" onmouseout="this.style.color='var(--t2)'">📊 Benchmarks</a>
+    <div id="badge" class="badge off"><div class="dot"></div><span id="badgeTxt">Disconnected</span></div>
+  </div>
 </div>
 
 <!-- STATS -->

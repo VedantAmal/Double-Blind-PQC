@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Double-Blind PQC — Benchmarks</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+:root{--bg0:#0a0e17;--bg1:#111827;--bg2:#1a2332;--bg3:#1f2b3d;--brd:#2a3a4e;
+--t1:#e2e8f0;--t2:#94a3b8;--t3:#64748b;
+--blue:#3b82f6;--cyan:#06b6d4;--green:#10b981;--purple:#8b5cf6;
+--red:#ef4444;--orange:#f59e0b;--pink:#ec4899;
+--glow-g:rgba(16,185,129,.15);--glow-r:rgba(239,68,68,.15)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'SF Mono','Fira Code','Cascadia Code',monospace;background:var(--bg0);color:var(--t1);min-height:100vh;overflow-x:hidden}
+
+/* header */
+.header{background:linear-gradient(135deg,var(--bg1),var(--bg2));border-bottom:1px solid var(--brd);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.header h1{font-size:17px;font-weight:700;background:linear-gradient(135deg,var(--cyan),var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header-sub{font-size:10px;color:var(--t3);margin-top:2px}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:20px;font-size:10px;font-weight:600}
+.badge.off{background:var(--glow-r);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+.badge.on{background:var(--glow-g);color:var(--green);border:1px solid rgba(16,185,129,.3)}
+.dot{width:7px;height:7px;border-radius:50%}
+.badge.off .dot{background:var(--red)}.badge.on .dot{background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* stats */
+.stats{display:flex;gap:10px;padding:10px 24px;background:var(--bg1);border-bottom:1px solid var(--brd);overflow-x:auto}
+.stat{display:flex;flex-direction:column;align-items:center;min-width:90px;padding:7px 14px;background:var(--bg2);border-radius:10px;border:1px solid var(--brd)}
+.sv{font-size:18px;font-weight:700;color:var(--cyan)}.sl{font-size:8px;color:var(--t3);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+
+/* tabs */
+.tabs{display:flex;padding:0 24px;background:var(--bg1);border-bottom:1px solid var(--brd)}
+.tab{padding:11px 22px;font-size:11px;font-weight:600;color:var(--t3);cursor:pointer;border-bottom:2px solid transparent;transition:.2s;user-select:none}
+.tab:hover{color:var(--t2)}.tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+.tc{display:none;padding:18px 24px}.tc.active{display:block}
+
+/* cards */
+.card{background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:18px;margin-bottom:14px}
+.card-t{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+
+/* sim layout */
+.sim-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:1200px){.sim-grid{grid-template-columns:1fr}}
+
+/* handshake steps */
+.hs-list{list-style:none}
+.hs{display:flex;gap:10px;padding:10px;margin-bottom:6px;border-radius:8px;background:rgba(255,255,255,.02);border:1px solid var(--brd);transition:.3s}
+.hs.running{border-color:var(--orange);background:rgba(245,158,11,.05)}
+.hs.complete{border-color:var(--green);background:rgba(16,185,129,.05)}
+.si{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:var(--bg1);border:1px solid var(--brd)}
+.hs.running .si{background:rgba(245,158,11,.2);border-color:var(--orange)}
+.hs.complete .si{background:rgba(16,185,129,.2);border-color:var(--green)}
+.st{font-size:11px;font-weight:600}.sd{font-size:10px;color:var(--t2);margin-top:2px}
+.sx{font-size:9px;color:var(--t3);margin-top:5px;line-height:1.6}
+.sx code{background:rgba(6,182,212,.1);color:var(--cyan);padding:1px 4px;border-radius:3px;font-size:9px}
+
+/* frag viz */
+.fv{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.fb{width:34px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;transition:.4s}
+.fb.pending{background:var(--bg1);border:1px dashed var(--t3);color:var(--t3)}
+.fb.sent{background:rgba(59,130,246,.2);border:1px solid var(--blue);color:var(--blue);animation:fly .3s ease-out}
+.fb.acked{background:rgba(16,185,129,.2);border:1px solid var(--green);color:var(--green)}
+@keyframes fly{from{transform:translateY(-6px);opacity:0}to{transform:translateY(0);opacity:1}}
+.fa{text-align:center;padding:5px 0;color:var(--t3);font-size:10px}
+
+/* chat */
+.chat-grid{display:grid;grid-template-columns:1fr 340px;gap:18px}
+@media(max-width:1000px){.chat-grid{grid-template-columns:1fr}}
+.chat-box{display:flex;flex-direction:column;height:480px}
+.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px}
+.cm{max-width:80%;padding:9px 12px;border-radius:11px;font-size:12px;line-height:1.5}
+.cm.alice{align-self:flex-start;background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(6,182,212,.1));border:1px solid rgba(59,130,246,.3);border-bottom-left-radius:3px}
+.cm.bob{align-self:flex-end;background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(236,72,153,.1));border:1px solid rgba(139,92,246,.3);border-bottom-right-radius:3px}
+.cm .ms{font-size:9px;font-weight:700;margin-bottom:2px}
+.cm.alice .ms{color:var(--blue)}.cm.bob .ms{color:var(--purple)}
+.cm .mm{font-size:8px;color:var(--t3);margin-top:3px}
+.ci-area{display:flex;gap:6px;padding:10px;border-top:1px solid var(--brd)}
+.stog{padding:7px 12px;border-radius:8px;border:1px solid var(--brd);background:var(--bg1);color:var(--t1);cursor:pointer;font-size:11px;font-weight:600;min-width:60px;text-align:center}
+.stog.alice{border-color:var(--blue);color:var(--blue)}.stog.bob{border-color:var(--purple);color:var(--purple)}
+.cinp{flex:1;padding:7px 12px;border-radius:8px;border:1px solid var(--brd);background:var(--bg1);color:var(--t1);font-family:inherit;font-size:12px;outline:none}
+.cinp:focus{border-color:var(--cyan)}.cinp::placeholder{color:var(--t3)}
+.sbtn{padding:7px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--blue),var(--cyan));color:#fff;font-weight:700;font-size:11px;cursor:pointer;transition:.1s}
+.sbtn:hover{transform:scale(1.03)}.sbtn:disabled{opacity:.4;cursor:not-allowed}
+
+/* crypto inspector */
+.cins{max-height:480px;overflow-y:auto}
+.cf{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.cl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:2px}
+.cv{font-size:10px;color:var(--cyan);word-break:break-all;line-height:1.5;background:rgba(6,182,212,.05);padding:3px 6px;border-radius:4px}
+.cv.hex{color:var(--orange)}.cv.ok{color:var(--green)}.cv.fail{color:var(--red)}
+
+/* attacker */
+.atk-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:1200px){.atk-grid{grid-template-columns:1fr}}
+.am{padding:12px;border-radius:10px;border:1px solid var(--brd);background:rgba(255,255,255,.02);cursor:pointer;transition:.2s;margin-bottom:6px}
+.am:hover{border-color:var(--red);background:rgba(239,68,68,.05)}
+.am-t{font-size:12px;font-weight:700;color:var(--red)}.am-d{font-size:10px;color:var(--t2);margin-top:2px}
+.ar{max-height:600px;overflow-y:auto}
+.ari{padding:10px;margin-bottom:6px;border-radius:8px;border:1px solid var(--brd);font-size:10px;line-height:1.6}
+.ari.failed{border-left:3px solid var(--red);background:rgba(239,68,68,.03)}
+.ari.success{border-left:3px solid var(--green);background:rgba(16,185,129,.03)}
+.rm{font-weight:700;color:var(--orange)}.rv{font-weight:700;margin-top:3px}.rv.fail{color:var(--red)}.rv.ok{color:var(--green)}
+
+/* custom key input row */
+.cki{display:flex;gap:6px;margin-bottom:8px}
+.cki input{flex:1;padding:7px 10px;border-radius:6px;border:1px solid var(--brd);background:var(--bg1);color:var(--orange);font-family:inherit;font-size:10px;outline:none}
+.cki input:focus{border-color:var(--orange)}
+.cki input::placeholder{color:var(--t3)}
+
+/* brute config row */
+.bcr{display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:10px;color:var(--t2)}
+.bcr input{width:80px;padding:5px 8px;border-radius:6px;border:1px solid var(--brd);background:var(--bg1);color:var(--t1);font-family:inherit;font-size:10px;outline:none;text-align:center}
+.bcr input:focus{border-color:var(--orange)}
+
+/* progress bar */
+.pbar{height:14px;background:var(--bg1);border-radius:7px;overflow:hidden;margin:6px 0;border:1px solid var(--brd)}
+.pbar-fill{height:100%;background:linear-gradient(90deg,var(--red),var(--orange));transition:width .15s;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-size:7px;color:#fff;font-weight:700}
+
+/* packet table */
+.pt{width:100%;border-collapse:collapse}
+.pt th{text-align:left;padding:7px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);border-bottom:1px solid var(--brd)}
+.pt td{padding:7px 10px;font-size:10px;border-bottom:1px solid rgba(255,255,255,.03);color:var(--t2)}
+.pt tr:hover td{background:rgba(255,255,255,.02)}
+
+/* buttons */
+.btn{padding:9px 18px;border-radius:8px;border:none;font-weight:700;font-size:11px;cursor:pointer;transition:.2s;font-family:inherit}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-p{background:linear-gradient(135deg,var(--blue),var(--cyan));color:#fff}
+.btn-p:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 12px rgba(59,130,246,.3)}
+.btn-d{background:linear-gradient(135deg,var(--red),var(--pink));color:#fff}
+.btn-d:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 12px rgba(239,68,68,.3)}
+.btn-s{background:var(--bg1);color:var(--t2);border:1px solid var(--brd)}
+
+/* tunnel diagram */
+.tdiag{position:relative;padding:20px;background:linear-gradient(135deg,rgba(6,182,212,.03),rgba(139,92,246,.03));border-radius:12px;border:1px solid var(--brd);margin-bottom:14px}
+.tout{border:2px dashed var(--blue);border-radius:12px;padding:18px;position:relative}
+.tout-l{position:absolute;top:-9px;left:18px;background:var(--bg2);padding:0 7px;font-size:9px;font-weight:700;color:var(--blue)}
+.tin{border:2px solid var(--purple);border-radius:8px;padding:14px;position:relative}
+.tin-l{position:absolute;top:-9px;left:18px;background:var(--bg2);padding:0 7px;font-size:9px;font-weight:700;color:var(--purple)}
+.tpeers{display:flex;justify-content:space-between;align-items:center}
+.tp{text-align:center;padding:10px 18px;background:var(--bg1);border-radius:8px;border:1px solid var(--brd)}
+.tp-n{font-size:13px;font-weight:700}.tp-i{font-size:8px;color:var(--t3);margin-top:3px}
+.tflow{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:0 14px}
+.tf-a{font-size:18px;color:var(--green);animation:fp 2s infinite}
+.tf-l{font-size:8px;color:var(--t3)}
+@keyframes fp{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* backend log terminal */
+.term{background:#0c0c0c;border:1px solid #333;border-radius:8px;font-size:10px;line-height:1.7;padding:10px 12px;max-height:260px;overflow-y:auto;margin-top:14px}
+.term .l{white-space:pre-wrap;word-break:break-all}
+.term .ts{color:#555}.term .info{color:#6ee7b7}.term .warning{color:#fbbf24}.term .error{color:#f87171}
+
+/* scrollbar */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--t3)}
+
+.spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--orange);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+.divider{height:1px;background:var(--brd);margin:14px 0}
+
+/* entropy bar */
+.ebar{display:flex;align-items:center;gap:8px;margin:4px 0}
+.ebar-track{flex:1;height:10px;background:var(--bg1);border-radius:5px;overflow:hidden;border:1px solid var(--brd)}
+.ebar-fill{height:100%;border-radius:5px;transition:width .4s}
+.ebar-label{font-size:9px;color:var(--t3);min-width:60px}
+
+/* packet selector */
+.pkt-sel{display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.pkt-sel select{padding:6px 10px;border-radius:6px;border:1px solid var(--brd);background:var(--bg1);color:var(--t1);font-family:inherit;font-size:10px;outline:none;max-width:400px}
+.pkt-sel select:focus{border-color:var(--cyan)}
+.pkt-sel label{font-size:10px;color:var(--t3)}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <h1>🛡️ Double-Blind Post-Quantum Communication</h1>
+    <div class="header-sub">Kyber-768 · Dilithium-3 · AES-256-GCM · Fragmentation Wrapper</div>
+  </div>
+  <div style="display:flex; gap:20px; align-items:center;">
+    <a href="/" style="color:var(--t2); text-decoration:none; font-size:11px; font-weight:700; padding:6px 12px; transition:0.2s;" onmouseover="this.style.color='var(--cyan)'" onmouseout="this.style.color='var(--t2)'">VPN Dashboard</a>
+    <a href="/benchmarks" style="color:var(--cyan); text-decoration:none; font-size:11px; font-weight:700; background:rgba(6,182,212,0.1); padding:6px 12px; border-radius:6px; border:1px solid var(--cyan);">📊 Benchmarks</a>
+    <div id="badge" class="badge off"><div class="dot"></div><span id="badgeTxt">Disconnected</span></div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active">📊 Post-Quantum vs Classical Benchmarks</div>
+</div>
+
+<div class="tc active" id="tab-simulation" style="display: block;">
+  <div style="text-align:center;margin-bottom:16px">
+    <button class="btn btn-p" id="btnBench" onclick="startBenchmarks()">🚀 Run Comparative Benchmarks</button>
+  </div>
+
+  <div class="sim-grid">
+    <div class="card">
+      <div class="card-t">🔑 Key Exchange: <span style="color:var(--cyan);margin-left:4px;">Kyber-768 vs X25519</span></div>
+      <table class="pt" id="tbl-kem">
+        <thead><tr><th>Algorithm</th><th>Keygen (ms)</th><th>Exchange (ms)</th><th>Public Key (B)</th><th>Ciphertext (B)</th></tr></thead>
+        <tbody>
+          <tr><td colspan="5" style="text-align:center;color:var(--t3)">Awaiting test...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-t">✍️ Digital Signatures: <span style="color:var(--purple);margin-left:4px;">Dilithium-3 vs Ed25519</span></div>
+      <table class="pt" id="tbl-sig">
+        <thead><tr><th>Algorithm</th><th>Keygen (ms)</th><th>Sign (ms)</th><th>Verify (ms)</th><th>Signature (B)</th></tr></thead>
+        <tbody>
+          <tr><td colspan="5" style="text-align:center;color:var(--t3)">Awaiting test...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-t">🖥️ Benchmark Terminal Output</div>
+    <div class="term" id="term" style="max-height: 400px;"></div>
+  </div>
+</div>
+
+<script>
+const S = io();
+
+// connection
+S.on('connect',()=>{$('badge').className='badge on';$('badgeTxt').textContent='Connected'});
+S.on('disconnect',()=>{$('badge').className='badge off';$('badgeTxt').textContent='Disconnected'});
+
+function $(id){return document.getElementById(id)}
+
+S.on('backend_log',(d)=>{
+  const t=$('term'), line=document.createElement('div');
+  line.className='l';
+  line.innerHTML=`<span class="ts">[${d.ts}]</span> <span class="${d.level}">${esc(d.text)}</span>`;
+  t.appendChild(line);
+  if(t.children.length>2000) t.removeChild(t.firstChild);
+  t.scrollTop=t.scrollHeight;
+});
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function startBenchmarks(){
+  $('btnBench').disabled=true; $('btnBench').textContent='⏳ Running Benchmarks...';
+  S.emit('start_benchmarks');
+  $('term').innerHTML='';
+  document.querySelector('#tbl-kem tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--t3)">Running...</td></tr>';
+  document.querySelector('#tbl-sig tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--t3)">Running...</td></tr>';
+}
+
+S.on('bench_result', (data) => {
+    if (data.type === 'kem') {
+        const tbody = document.querySelector('#tbl-kem tbody');
+        if (tbody.innerHTML.includes('Running')) tbody.innerHTML = '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><strong style="color:var(--cyan)">${data.algo}</strong></td>
+                        <td>${(data.keygen).toFixed(3)}</td>
+                        <td>${(data.exchange).toFixed(3)}</td>
+                        <td>${data.pk_size}</td>
+                        <td>${data.ct_size}</td>`;
+        tbody.appendChild(tr);
+    } else if (data.type === 'sig') {
+        const tbody = document.querySelector('#tbl-sig tbody');
+        if (tbody.innerHTML.includes('Running')) tbody.innerHTML = '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><strong style="color:var(--purple)">${data.algo}</strong></td>
+                        <td>${(data.keygen).toFixed(3)}</td>
+                        <td>${(data.sign).toFixed(3)}</td>
+                        <td>${(data.verify).toFixed(3)}</td>
+                        <td>${data.sig_size}</td>`;
+        tbody.appendChild(tr);
+    }
+});
+
+S.on('bench_complete', () => {
+  $('btnBench').disabled=false; $('btnBench').textContent='✅ Benchmarks Complete (Run Again)';
+});
+
+</script>
+</body>
+</html>

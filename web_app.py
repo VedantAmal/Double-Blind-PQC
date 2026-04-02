@@ -24,6 +24,9 @@ from crypto_core import (
     KyberKEM, DilithiumSigner, AESGCMCipher, PQCSession,
     derive_key, SecurityError,
 )
+from cryptography.hazmat.primitives.asymmetric import x25519, ed25519, rsa, ec, padding
+from cryptography.hazmat.primitives import serialization, hashes
+import statistics
 from fragmentation import Fragmenter, HEADER_SIZE, _pack_header, _unpack_header, FLAG_FRAG, FLAG_ACK, FLAG_FIN
 from protocol import (
     MsgType, encode_message, decode_message,
@@ -95,6 +98,9 @@ state = SimulationState()
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index(): return render_template("index.html")
+
+@app.route("/benchmarks")
+def benchmarks(): return render_template("benchmarks.html")
 
 @app.route("/api/status")
 def api_status():
@@ -494,6 +500,179 @@ def handle_get_stats():
 @socketio.on("get_intercepted")
 def handle_get_intercepted():
     emit("intercepted_list",[{k:v for k,v in p.items() if k!="raw_bytes"} for p in state.intercepted_packets])
+
+@socketio.on("start_benchmarks")
+def handle_start_benchmarks():
+    blog("info", "═══════════════════════════════════════════════════════")
+    blog("info", "  Comparative Benchmarks Starting...")
+    blog("info", "═══════════════════════════════════════════════════════")
+    
+    blog("info", "[KEM] Benchmarking Kyber-768...")
+    times_keygen = []; times_encap = []; pk_sz = 0; ct_sz = 0
+    try:
+        for _ in range(25):
+            kem = KyberKEM()
+            t0 = time.perf_counter()
+            pk = kem.generate_keypair()
+            times_keygen.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            ct, ss = kem.encapsulate(pk)
+            times_encap.append((time.perf_counter()-t0)*1000)
+            if pk_sz == 0: pk_sz = len(pk); ct_sz = len(ct)
+        socketio.emit("bench_result", {"type": "kem", "algo": "Kyber-768", "keygen": statistics.mean(times_keygen), "exchange": statistics.mean(times_encap), "pk_size": pk_sz, "ct_size": ct_sz})
+        blog("info", f"      Kyber-768 -> KGen: {statistics.mean(times_keygen):.2f}ms | M: {statistics.mean(times_encap):.2f}ms | PK: {pk_sz}B")
+    except Exception as e:
+        blog("error", f"Kyber bench failed: {e}")
+
+    blog("info", "[KEM] Benchmarking X25519 (ECDH)...")
+    times_keygen = []; times_exch = []; pk_sz = 0; ct_sz = 0
+    try:
+        for _ in range(25):
+            t0 = time.perf_counter()
+            priv_a = x25519.X25519PrivateKey.generate()
+            pub_a = priv_a.public_key()
+            times_keygen.append((time.perf_counter()-t0)*1000)
+            priv_b = x25519.X25519PrivateKey.generate()
+            pub_b = priv_b.public_key()
+            t0 = time.perf_counter()
+            ss = priv_a.exchange(pub_b)
+            times_exch.append((time.perf_counter()-t0)*1000)
+            if pk_sz == 0:
+                pk_bytes = pub_a.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
+                pk_sz = len(pk_bytes); ct_sz = len(pk_bytes)
+        socketio.emit("bench_result", {"type": "kem", "algo": "X25519 (ECDH)", "keygen": statistics.mean(times_keygen), "exchange": statistics.mean(times_exch), "pk_size": pk_sz, "ct_size": ct_sz})
+        blog("info", f"      X25519 -> KGen: {statistics.mean(times_keygen):.2f}ms | M: {statistics.mean(times_exch):.2f}ms | PK: {pk_sz}B")
+    except Exception as e:
+        blog("error", f"X25519 bench failed: {e}")
+
+    blog("info", "[KEM] Benchmarking ECDH (SECP256R1)...")
+    times_keygen = []; times_exch = []; pk_sz = 0; ct_sz = 0
+    try:
+        for _ in range(25):
+            t0 = time.perf_counter()
+            priv_a = ec.generate_private_key(ec.SECP256R1())
+            pub_a = priv_a.public_key()
+            times_keygen.append((time.perf_counter()-t0)*1000)
+            priv_b = ec.generate_private_key(ec.SECP256R1())
+            pub_b = priv_b.public_key()
+            t0 = time.perf_counter()
+            ss = priv_a.exchange(ec.ECDH(), pub_b)
+            times_exch.append((time.perf_counter()-t0)*1000)
+            if pk_sz == 0:
+                pk_bytes = pub_a.public_bytes(encoding=serialization.Encoding.X962, format=serialization.PublicFormat.UncompressedPoint)
+                pk_sz = len(pk_bytes); ct_sz = len(pk_bytes)
+        socketio.emit("bench_result", {"type": "kem", "algo": "P-256 (ECDH)", "keygen": statistics.mean(times_keygen), "exchange": statistics.mean(times_exch), "pk_size": pk_sz, "ct_size": ct_sz})
+        blog("info", f"      P-256 -> KGen: {statistics.mean(times_keygen):.2f}ms | M: {statistics.mean(times_exch):.2f}ms | PK: {pk_sz}B")
+    except Exception as e:
+        blog("error", f"P-256 bench failed: {e}")
+
+    blog("info", "[KEM] Benchmarking RSA-OAEP (3072-bit)...")
+    times_keygen = []; times_exch = []; pk_sz = 0; ct_sz = 0
+    try:
+        t0 = time.perf_counter()
+        priv_a = rsa.generate_private_key(public_exponent=65537, key_size=3072)
+        pub_a = priv_a.public_key()
+        kgen_time = (time.perf_counter()-t0)*1000
+        for _ in range(25):
+            times_keygen.append(kgen_time)
+            msg_rsa = os.urandom(32)
+            t0 = time.perf_counter()
+            ct = pub_a.encrypt(msg_rsa, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+            times_exch.append((time.perf_counter()-t0)*1000)
+            if pk_sz == 0:
+                pk_bytes = pub_a.public_bytes(encoding=serialization.Encoding.DER, format=serialization.PublicFormat.SubjectPublicKeyInfo)
+                pk_sz = len(pk_bytes); ct_sz = len(ct)
+        socketio.emit("bench_result", {"type": "kem", "algo": "RSA-OAEP (3072)", "keygen": kgen_time, "exchange": statistics.mean(times_exch), "pk_size": pk_sz, "ct_size": ct_sz})
+        blog("info", f"      RSA-3072 -> KGen: {kgen_time:.2f}ms | M: {statistics.mean(times_exch):.2f}ms | PK: {pk_sz}B")
+    except Exception as e:
+        blog("error", f"RSA bench failed: {e}")
+
+    blog("info", "[SIG] Benchmarking Dilithium-3...")
+    msg = os.urandom(256)
+    times_keygen = []; times_sign = []; times_verify = []; sig_sz = 0
+    try:
+        for _ in range(25):
+            signer = DilithiumSigner()
+            t0 = time.perf_counter()
+            pk = signer.generate_keypair()
+            times_keygen.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            sig = signer.sign(msg)
+            times_sign.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            DilithiumSigner.verify(msg, sig, pk)
+            times_verify.append((time.perf_counter()-t0)*1000)
+            if sig_sz == 0: sig_sz = len(sig)
+        socketio.emit("bench_result", {"type": "sig", "algo": "Dilithium-3", "keygen": statistics.mean(times_keygen), "sign": statistics.mean(times_sign), "verify": statistics.mean(times_verify), "sig_size": sig_sz})
+        blog("info", f"      Dilithium-3 -> Sign: {statistics.mean(times_sign):.2f}ms | Verify: {statistics.mean(times_verify):.2f}ms | Sig: {sig_sz}B")
+    except Exception as e:
+        blog("error", f"Dilithium bench failed: {e}")
+
+    blog("info", "[SIG] Benchmarking Ed25519...")
+    times_keygen = []; times_sign = []; times_verify = []; sig_sz = 0
+    try:
+        for _ in range(25):
+            t0 = time.perf_counter()
+            priv = ed25519.Ed25519PrivateKey.generate()
+            pub = priv.public_key()
+            times_keygen.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            sig = priv.sign(msg)
+            times_sign.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            pub.verify(sig, msg)
+            times_verify.append((time.perf_counter()-t0)*1000)
+            if sig_sz == 0: sig_sz = len(sig)
+        socketio.emit("bench_result", {"type": "sig", "algo": "Ed25519", "keygen": statistics.mean(times_keygen), "sign": statistics.mean(times_sign), "verify": statistics.mean(times_verify), "sig_size": sig_sz})
+        blog("info", f"      Ed25519 -> Sign: {statistics.mean(times_sign):.2f}ms | Verify: {statistics.mean(times_verify):.2f}ms | Sig: {sig_sz}B")
+    except Exception as e:
+        blog("error", f"Ed25519 bench failed: {e}")
+
+    blog("info", "[SIG] Benchmarking ECDSA (SECP256R1)...")
+    times_keygen = []; times_sign = []; times_verify = []; sig_sz = 0
+    try:
+        for _ in range(25):
+            t0 = time.perf_counter()
+            priv = ec.generate_private_key(ec.SECP256R1())
+            pub = priv.public_key()
+            times_keygen.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            sig = priv.sign(msg, ec.ECDSA(hashes.SHA256()))
+            times_sign.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            pub.verify(sig, msg, ec.ECDSA(hashes.SHA256()))
+            times_verify.append((time.perf_counter()-t0)*1000)
+            if sig_sz == 0: sig_sz = len(sig)
+        socketio.emit("bench_result", {"type": "sig", "algo": "ECDSA (P-256)", "keygen": statistics.mean(times_keygen), "sign": statistics.mean(times_sign), "verify": statistics.mean(times_verify), "sig_size": sig_sz})
+        blog("info", f"      ECDSA -> Sign: {statistics.mean(times_sign):.2f}ms | Verify: {statistics.mean(times_verify):.2f}ms | Sig: {sig_sz}B")
+    except Exception as e:
+        blog("error", f"ECDSA bench failed: {e}")
+
+    blog("info", "[SIG] Benchmarking RSA-PSS (3072-bit)...")
+    times_keygen = []; times_sign = []; times_verify = []; sig_sz = 0
+    try:
+        t0 = time.perf_counter()
+        priv = rsa.generate_private_key(public_exponent=65537, key_size=3072)
+        pub = priv.public_key()
+        kgen_time = (time.perf_counter()-t0)*1000
+        for _ in range(25):
+            times_keygen.append(kgen_time)
+            t0 = time.perf_counter()
+            sig = priv.sign(msg, padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
+            times_sign.append((time.perf_counter()-t0)*1000)
+            t0 = time.perf_counter()
+            pub.verify(sig, msg, padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
+            times_verify.append((time.perf_counter()-t0)*1000)
+            if sig_sz == 0: sig_sz = len(sig)
+        socketio.emit("bench_result", {"type": "sig", "algo": "RSA-PSS (3072)", "keygen": kgen_time, "sign": statistics.mean(times_sign), "verify": statistics.mean(times_verify), "sig_size": sig_sz})
+        blog("info", f"      RSA-PSS -> Sign: {statistics.mean(times_sign):.2f}ms | Verify: {statistics.mean(times_verify):.2f}ms | Sig: {sig_sz}B")
+    except Exception as e:
+        blog("error", f"RSA-PSS bench failed: {e}")
+
+    blog("info", "═══════════════════════════════════════════════════════")
+    blog("info", "  ✅ Benchmarks Complete!")
+    blog("info", "═══════════════════════════════════════════════════════")
+    socketio.emit("bench_complete", {})
 
 if __name__ == "__main__":
     print("\n" + "="*60)
